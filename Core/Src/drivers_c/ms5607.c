@@ -157,30 +157,6 @@ void MS5607SetPressureOSR(MS5607OSRFactors pOSR) {
 Barometer_2_Axis MS5607_ReadData() {
     Barometer_2_Axis data = {0};
 
-
-
-    // Do the avg for 10 readings
-    //Barometer_2_Axis avg = {0};
-    //int window = 10;
-//    for (int i = 0; i < window; i++) {
-//        MS5607Update();
-//        data.temperature = MS5607GetTemperatureC();
-//        data.pressure = MS5607GetPressurePa();
-//        float raw_altitude = calculate_altitude(data.pressure);
-//        data.altitude = kalman_filter(raw_altitude);
-//
-//        avg.pressure += data.pressure;
-//        avg.temperature += data.temperature;
-//        avg.altitude += data.altitude;
-//    }
-//
-//    avg.pressure /= window;
-//    avg.temperature /= window;
-//    avg.altitude /= window;
-//
-//    return avg;
-
-
         MS5607Update();
         data.temperature = MS5607GetTemperatureC();
         data.pressure = MS5607GetPressurePa();

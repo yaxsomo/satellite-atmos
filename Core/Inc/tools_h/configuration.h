@@ -20,6 +20,8 @@
 extern SPI_HandleTypeDef hspi1; // BAROMETER SPI INTERFACE
 extern ADC_HandleTypeDef hadc1;
 
+extern UART_HandleTypeDef huart3;
+
 /* ========================== */
 /*        ENUM DEFINITIONS    */
 /* ========================== */
@@ -90,6 +92,8 @@ typedef enum {
 #define BARO_CS_GPIO_Port GPIOA
 
 #define TAKEOFF_ALTITUDE_THRESHOLD 20.0f
+#define TOUCHDOWN_ALTITUDE_THRESHOLD 3.0 // meters (adjust as needed)
+#define FLIGHT_LOG_DELAY_MS 5           // Telemetry log rate
 #define APOGEE_COUNT_THRESHOLD     5
 
 #define NUM_SAMPLES 100  // Number of readings to average
@@ -113,12 +117,10 @@ typedef enum {
 
 
 /* SD CARD */
-
-#define SPI_TIMEOUT 100
-
-extern SPI_HandleTypeDef 	hspi2;
-#define HSPI_SDCARD		 	&hspi2
-#define	SD_CS_PORT			GPIOB
-#define SD_CS_PIN			GPIO_PIN_12
+// File status and config
+#define LOG_BURST_N         32
+#define TELEMETRY_BURST_N   32
+#define LOG_FILE_NAME       "logs.csv"
+#define TELEMETRY_FILE_NAME "telemetry.csv"
 
 #endif /* INC_CONFIGURATION_H_ */

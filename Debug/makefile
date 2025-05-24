@@ -67,8 +67,8 @@ all: main-build
 main-build: aerosentinel_atmos.elf secondary-outputs
 
 # Tool invocations
-aerosentinel_atmos.elf aerosentinel_atmos.map: $(OBJS) $(USER_OBJS) C:\Users\Yassine\ DEHHANI\Documents\satellite-atmos\STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "aerosentinel_atmos.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\Yassine DEHHANI\Documents\satellite-atmos\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="aerosentinel_atmos.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+aerosentinel_atmos.elf aerosentinel_atmos.map: $(OBJS) $(USER_OBJS) /Users/yaxsomo/satellite-atmos/STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "aerosentinel_atmos.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/Users/yaxsomo/satellite-atmos/STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="aerosentinel_atmos.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

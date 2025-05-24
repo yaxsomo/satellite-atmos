@@ -1,18 +1,14 @@
-/*
- * manager.c
- *
- *  Created on: May 21, 2025
- *      Author: Yassine DEHHANI
- */
-/* --- MODIFIED state_manager.c --- */
 #include "manager_h/manager.h"
 #include "drivers_h/ms5607.h"
-#include "drivers_h/mics5524.h"
+#include "drivers_h/sds011.h"
+#include "drivers_h/ens160.h"
+#include "drivers_h/aht21.h"
 #include "tools_h/global_variables.h"
 #include "drivers_h/led.h"
+#include "drivers_h/black_box.h"
 #include "tools_h/logger.h"
-#include "drivers_h/fatfs_sd.h"
 #include "fatfs.h"
+#include "tools_h/configuration.h"
 
 // EXTERN VARIABLES //
 extern SystemState system_state;
@@ -22,116 +18,88 @@ extern bool TAKEOFF_ALREADY_DETECTED;
 extern double ALTITUDE_MAX_GLOBAL;
 extern float LAST_STORED_ALTITUDE_MAX;
 
-MICS5524_Handle_t gas_sensor;
-float voltage = 0;
 
+SDS sds011_device;
+ENS160_t ens160_device;
+
+void get_timestamp(uint8_t *hour, uint8_t *min, uint8_t *sec, uint16_t *ms);
+PhaseResult post_flight_phase(void);
 
 void _Error_Handler(char *file, int line)
 {
-	/* USER CODE BEGIN Error_Handler_Debug */
-	/* User can add his own implementation to report the HAL error return state */
-	while(1)
-	{
-	}
-	/* USER CODE END Error_Handler_Debug */
+	while(1) {}
 }
 
-void test_sd_card() {
-	const char total_uptime_filename[] = "uptime.dat";
-	const char tick_filename[] = "tick.txt";
-	const char big_filename[] = "big.dat";
-	uint32_t total_uptime = 0;
-	 uint32_t wbytes, rbytes; /* File write counts */
-
-	   if (f_mount(&USERFatFS, "", 0) != FR_OK) {
-	        printf("Unable to mount disk\n");
-	        Error_Handler();
-	    }
-
-	    if (f_open(&USERFile, total_uptime_filename, FA_OPEN_EXISTING | FA_READ) == FR_OK) {
-	        if (f_read(&USERFile, &total_uptime, sizeof(total_uptime), (void*) &rbytes) == FR_OK) {
-	            printf("Total uptime = %lu\n", total_uptime);
-	            f_close(&USERFile);
-	        } else {
-	            printf("Unable to read\n");
-	            Error_Handler();
-	        }
-	    } else {
-	        // File did not exist - let's create it
-	        if (f_open(&USERFile, total_uptime_filename, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK) {
-	            if (f_write(&USERFile, &total_uptime, sizeof(total_uptime), (void*) &wbytes) == FR_OK) {
-	                printf("File %s created\n", total_uptime_filename);
-	                f_close(&USERFile);
-	            } else {
-	                printf("Unable to write\n");
-	                Error_Handler();
-	            }
-	        } else {
-	            printf("Unable to create\n");
-	            Error_Handler();
-	        }
-	    }
-
-	    // Create tick file if it does NOT exist
-	    if (f_open(&USERFile, tick_filename, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK) {
-	        f_close(&USERFile);
-	    }
-
-	    uint8_t buf[1024]; // 1K buffer
-	    for (uint16_t i = 0; i < 1024; ++i) {
-	        buf[i] = (uint8_t) i;
-	    }
-
-	    uint32_t start = uwTick;
-	    if (f_open(&USERFile, big_filename, FA_CREATE_ALWAYS | FA_WRITE) == FR_OK) {
-	        for (uint16_t i = 0; i < 100; ++i) {
-	            if (f_write(&USERFile, &buf, sizeof(buf), (void*) &wbytes) != FR_OK) {
-	                printf("Unable to write\n");
-	            }
-	        }
-	        f_close(&USERFile);
-	    } else {
-	        printf("Unable to open %s\n", big_filename);
-	    }
-	    printf("Write took %lu ms\n", uwTick - start);
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    sds_uart_RxCpltCallback(&sds011_device, &huart3);
 }
 
 
-
+// --- PHASE: INIT ---
 PhaseResult init_phase(){
     LED_SetState(STATUS_INITIALIZATION);
 
-    int8_t barometer_init_result = MS5607_Init();
-    if(barometer_init_result != 0){
+    // SD card & CSV creation
+    if(mount_sd_card() != 0){
         LED_SetState(STATUS_ERROR);
+        log_event(0,0,0,0,"ERROR","SD card mount failed");
         return PHASE_FAIL;
     }
+    black_box_init();
+    check_free_space();
+    log_event(0,0,0,0,"INFO","SD card mounted and log/telemetry ready");
 
-    MICS5524_Handle_Init(&gas_sensor, &hadc1, ADC_CHANNEL_3);
-
-    log_print("[GAS SENSOR] Warming up...\n");
-    // Block here (startup only) until warmup done
-    while (!MICS5524_Handle_WarmUp(&gas_sensor, 0.3)) {
-        HAL_Delay(100); // or your preferred delay
+    // Sensors init
+    if(MS5607_Init() != 0){
+        LED_SetState(STATUS_ERROR);
+        log_event(0,0,0,0,"ERROR","MS5607 initialization failed");
+        return PHASE_FAIL;
     }
-    log_print("[GAS SENSOR] Warmup complete!\n");
+    log_event(0,0,0,0,"INFO","MS5607 initialized");
 
+    if(sdsInit(&sds011_device, &huart3) != 0){
+        LED_SetState(STATUS_ERROR);
+        log_event(0,0,0,0,"ERROR","SDS011 initialization failed");
+        return PHASE_FAIL;
+    }
+    log_event(0,0,0,0,"INFO","SDS011 initialized");
+
+    ENS160_Init(&ens160_device); // No return value, assumed always successful for now
+    ENS160_SetMode(&ens160_device, ENS160_OPMODE_STD);
+    log_event(0,0,0,0,"INFO","ENS160 initialized");
+
+    if(AHT21_init() != 0){
+        LED_SetState(STATUS_ERROR);
+        log_event(0,0,0,0,"ERROR","AHT21 initialization failed");
+        return PHASE_FAIL;
+    }
+    log_event(0,0,0,0,"INFO","AHT21 initialized");
 
     system_state = STATUS_PREFLIGHT;
+    log_event(0,0,0,0,"INFO","System init complete. Ready for pre-flight.");
     return PHASE_SUCCESS;
 }
 
-
-
+// --- PHASE: PRE-FLIGHT ---
 PhaseResult pre_flight_phase() {
     LED_SetState(STATUS_PREFLIGHT);
     log_print("[STATE] Waiting for Takeoff Detection...\n");
+    log_event(0, 0, 0, 0, "STATE", "Waiting for Takeoff Detection...");
 
     while (system_state == STATUS_PREFLIGHT) {
         barometer_data = MS5607_ReadData();
 
         log_print("[BAROMETER] Pressure: %.3f Pa, Temp: %.3f degC, Altitude: %.3f meters\n",
                   barometer_data.pressure, barometer_data.temperature, barometer_data.altitude);
+
+        // Event log to SD as well
+        uint8_t hour, min, sec; uint16_t ms;
+        get_timestamp(&hour, &min, &sec, &ms);
+        char msg[128];
+        snprintf(msg, sizeof(msg), "[BAROMETER] Pressure: %.3f Pa, Temp: %.3f degC, Altitude: %.3f meters",
+                 barometer_data.pressure, barometer_data.temperature, barometer_data.altitude);
+        log_event(hour, min, sec, ms, "BAROMETER", msg);
 
         if (barometer_data.altitude > ALTITUDE_MAX_GLOBAL) {
             ALTITUDE_MAX_GLOBAL = barometer_data.altitude;
@@ -141,79 +109,147 @@ PhaseResult pre_flight_phase() {
             TAKEOFF_DETECTED = true;
             TAKEOFF_ALREADY_DETECTED = true;
             log_print("[STATE] TAKEOFF DETECTED!\n");
+            log_event(hour, min, sec, ms, "STATE", "TAKEOFF DETECTED!");
         }
 
         if (TAKEOFF_DETECTED) {
             log_print("[STATE] Transition to Flight Mode\n");
+            log_event(hour, min, sec, ms, "STATE", "Transition to Flight Mode");
             system_state = STATUS_FLIGHT;
             return PHASE_SUCCESS;
         }
     }
     log_print("[STATE] Interrupted - Exiting Pre-Flight\n");
+    log_event(0, 0, 0, 0, "STATE", "Interrupted - Exiting Pre-Flight");
     return PHASE_INTERRUPTED;
 }
 
-
+// --- PHASE: FLIGHT ---
 PhaseResult flight_phase() {
+    log_event(0,0,0,0,"STATE","Entered FLIGHT PHASE");
+    LED_SetState(STATUS_FLIGHT);
 
-	while(true){
-//	    // Sensor already warmed up!
-//	    float co_ppm      = MICS5524_Handle_ReadGasPPM(&gas_sensor, MICS5524_CO);
-//	    float ch4_ppm     = MICS5524_Handle_ReadGasPPM(&gas_sensor, MICS5524_CH4);
-//	    float ethanol_ppm = MICS5524_Handle_ReadGasPPM(&gas_sensor, MICS5524_C2H5OH);
-//	    float h2_ppm      = MICS5524_Handle_ReadGasPPM(&gas_sensor, MICS5524_H2);
-//	    float nh3_ppm     = MICS5524_Handle_ReadGasPPM(&gas_sensor, MICS5524_NH3);
-//
-//	    int co_present    = MICS5524_Handle_GasPresent(&gas_sensor, MICS5524_CO);
-//	    int ch4_present   = MICS5524_Handle_GasPresent(&gas_sensor, MICS5524_CH4);
-//	    int etoh_present  = MICS5524_Handle_GasPresent(&gas_sensor, MICS5524_C2H5OH);
-//	    int h2_present    = MICS5524_Handle_GasPresent(&gas_sensor, MICS5524_H2);
-//	    int nh3_present   = MICS5524_Handle_GasPresent(&gas_sensor, MICS5524_NH3);
-//
-//	    log_print("[GAS] CO: %.2fppm (%s), CH4: %.2fppm (%s), EtOH: %.2fppm (%s), H2: %.2fppm (%s), NH3: %.2fppm (%s)\n",
-//	        co_ppm,   co_present   ? "YES":"NO",
-//	        ch4_ppm,  ch4_present  ? "YES":"NO",
-//	        ethanol_ppm, etoh_present ? "YES":"NO",
-//	        h2_ppm,   h2_present   ? "YES":"NO",
-//	        nh3_ppm,  nh3_present  ? "YES":"NO"
-//	    );
-#define RL_VALUE 10000.0f // Valeur de la résistance de charge en ohms
-#define VREF 3.3f          // Tension de référence de l'ADC
+    const int APOGEE_DEBOUNCE = 5;
+    int apogee_measures = APOGEE_DEBOUNCE;
+    float last_altitude = 0.0f;
+    bool apogee_detected = false;
+    bool touchdown_detected = false;
 
-float rs = MICS5524_CalculateRs(adc_val, RL_VALUE, VREF);
-float rs_r0 = rs / r0_ox;
-float co_ppm = get_co_ppm(rs_r0);
-//		int16_t adc_val = MICS5524_ReadADC(&gas_sensor.ll_sensor);
-//		log_print("valeur: %d", adc_val);
-//		float test_var = MICS5524_ReadVoltage();
+    // (Optional) Prepare any deploy logic/flags
 
-	    HAL_Delay(1000);
-	}
+    while (system_state == STATUS_FLIGHT) {
+        // --- Timestamp
+        uint8_t hour, min, sec;
+        uint16_t ms;
+        get_timestamp(&hour, &min, &sec, &ms);
 
+        // --- 1. Barometer
+        barometer_data = MS5607_ReadData();
+        float current_altitude = barometer_data.altitude;
 
+        // --- 2. SDS011 readings
+        float pm2_5 = (float)sdsGetPm2_5(&sds011_device);
+        float pm10  = (float)sdsGetPm10(&sds011_device);
+
+        // --- 3. ENS160 readings
+        ENS160_ReadData(&ens160_device);
+        uint8_t AQI         = ens160_device.aqi;
+        uint16_t TVOC       = ens160_device.tvoc;
+        uint16_t eCO2       = ens160_device.eco2;
+
+        // --- 4. AHT21 readings
+        float aht21_temperature = (float)AHT21_Read_Temperature();
+        float aht21_humidity    = (float)AHT21_Read_Humidity();
+
+        // --- 5. Telemetry log
+        log_telemetry(hour, min, sec, ms,
+                      barometer_data.temperature,
+                      barometer_data.pressure,
+                      barometer_data.altitude,
+                      pm2_5,
+                      pm10,
+                      AQI,
+                      TVOC,
+                      eCO2,
+                      aht21_temperature,
+                      aht21_humidity);
+
+        // --- 6. Apogee detection (debounce style)
+        if (current_altitude > ALTITUDE_MAX_GLOBAL) {
+            ALTITUDE_MAX_GLOBAL = current_altitude;
+        }
+
+        if (!apogee_detected) {
+            if (current_altitude < last_altitude) {
+                apogee_measures--;
+                if (apogee_measures <= 0) {
+                    apogee_detected = true;
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "APOGEE detected at %.2f meters!", ALTITUDE_MAX_GLOBAL);
+                    log_event(hour, min, sec, ms, "EVENT", msg);
+                }
+            } else {
+                apogee_measures = APOGEE_DEBOUNCE;
+            }
+            last_altitude = current_altitude;
+        } else {
+            // --- 7. Touchdown detection (after apogee)
+            if (!touchdown_detected && (current_altitude < (TOUCHDOWN_ALTITUDE_THRESHOLD + 0.5))) {
+                touchdown_detected = true;
+                char msg[64];
+                snprintf(msg, sizeof(msg), "TOUCHDOWN detected at %.2f m", current_altitude);
+                log_event(hour, min, sec, ms, "EVENT", msg);
+                system_state = STATUS_POSTFLIGHT;
+                break;
+            }
+        }
+
+        //HAL_Delay(FLIGHT_LOG_DELAY_MS);
+    }
 
     return PHASE_SUCCESS;
 }
 
+// --- PHASE: POST-FLIGHT ---
+PhaseResult post_flight_phase() {
+    log_event(0,0,0,0,"STATE","Entered POST-FLIGHT PHASE");
+    LED_SetState(STATUS_GRACEFUL_SHUTDOWN);
 
-SystemState Manager_Main(){
-	 log_print("Sat Atmo - Diamant A Experience - Welcome! \n");
-	 //test_sd_card();
+    // Flush files & unmount
+    black_box_flush_all();
+    log_event(0,0,0,0,"INFO","SD files flushed and closed.");
+    unmount_sd_card();
+    //log_event(0,0,0,0,"INFO","SD card unmounted.");
+
+    return PHASE_SUCCESS;
+}
+
+// --- MAIN MANAGER LOGIC ---
+SystemState Manager_Main() {
+    log_event(0,0,0,0,"INFO","Sat Atmo - Diamant A Experience - Welcome!");
 
     PhaseResult ret = init_phase();
     if(ret != PHASE_SUCCESS) return STATUS_ERROR;
 
-	ret = pre_flight_phase();
-	if(ret != PHASE_SUCCESS) return STATUS_ERROR;
+    ret = pre_flight_phase();
+    if(ret != PHASE_SUCCESS) return STATUS_ERROR;
 
     ret = flight_phase();
-	if(ret != PHASE_SUCCESS) return STATUS_ERROR;
-//
-//    ret = post_flight_phase();
-//    if(ret != PHASE_SUCCESS) return STATUS_ERROR;
+    if(ret != PHASE_SUCCESS) return STATUS_ERROR;
 
-    LED_SetState(STATUS_GRACEFUL_SHUTDOWN);
+    ret = post_flight_phase();
+    if(ret != PHASE_SUCCESS) return STATUS_ERROR;
+
     return STATUS_GRACEFUL_SHUTDOWN;
 }
 
-
+// --- Timestamp function (stub) ---
+void get_timestamp(uint8_t *hour, uint8_t *min, uint8_t *sec, uint16_t *ms) {
+    // TODO: Replace with your actual RTC/timebase
+    static uint32_t counter = 0;
+    *hour = 0;
+    *min = 0;
+    *sec = (counter / 20) % 60;
+    *ms = (counter % 20) * 50;
+    counter++;
+}

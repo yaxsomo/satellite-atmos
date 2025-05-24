@@ -30,32 +30,8 @@ static inline void log_print(const char *format, ...) {
     printf("%s", buffer); // SWV output
 #endif
 
-#ifdef STORAGE_LOGS
-    // Placeholder for SD card logging
-    STUB_FUNCTION("Log_To_SD_Card");
-#endif
-
 #endif // LOGGER
 }
 
-/* ========================== */
-/*        STUB TELEMETRY     */
-/* ========================== */
-
-static inline void telemetry_store(uint8_t *data, size_t len) {
-#if STORAGE_TELEMETRY == ENABLED
-    STUB_FUNCTION("telemetry_store");
-#endif
-}
-
-/* ========================== */
-/*        STUB LOG STORE     */
-/* ========================== */
-
-static inline void log_store(const char *message) {
-#if STORAGE_LOGS == ENABLED
-    STUB_FUNCTION("log_store");
-#endif
-}
 
 #endif /* INC_TOOLS_H_LOGGER_H_ */
