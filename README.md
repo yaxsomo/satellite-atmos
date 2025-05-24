@@ -1,5 +1,5 @@
 # Satellite Atmos Software
-
+![Atmos_PCB_2025-May-24_09-10-39PM-000_CustomizedView16118607194_png_alpha 1](https://github.com/user-attachments/assets/45c43971-69d5-4a6b-b40d-cc0cba460abb)
 Welcome to the **Atmos Software** repository!  
 This software powers the **Atmos** module, a compact, high-precision atmospheric monitoring system designed for satellites, high-altitude balloons, and scientific missions.  
 
@@ -54,10 +54,7 @@ It enables real-time data acquisition, storage, and transmission from a suite of
 ---
 
 ## 📍 Interfaces
-
-![Interfaces](path/to/your/pinout-image.png)
-
-
+![atmos_interfaces](https://github.com/user-attachments/assets/2634125c-2db5-41ae-a712-92d272a6ded8)
 ---
 
 ## 📝 License
