@@ -9,8 +9,15 @@ RM := rm -rf
 
 # All of the sources participating in the build are defined here
 -include sources.mk
+-include Middlewares/Third_Party/FatFs/src/option/subdir.mk
+-include Middlewares/Third_Party/FatFs/src/subdir.mk
+-include FATFS/Target/subdir.mk
+-include FATFS/App/subdir.mk
 -include Drivers/STM32L4xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk
+-include Core/Src/tools_c/subdir.mk
+-include Core/Src/manager_c/subdir.mk
+-include Core/Src/drivers_c/subdir.mk
 -include Core/Src/subdir.mk
 -include objects.mk
 
@@ -60,8 +67,8 @@ all: main-build
 main-build: aerosentinel_atmos.elf secondary-outputs
 
 # Tool invocations
-aerosentinel_atmos.elf aerosentinel_atmos.map: $(OBJS) $(USER_OBJS) /Users/yaxsomo/STM32CubeIDE/workspace_1.16.0/aerosentinel_atmos/STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "aerosentinel_atmos.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/Users/yaxsomo/STM32CubeIDE/workspace_1.16.0/aerosentinel_atmos/STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="aerosentinel_atmos.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+aerosentinel_atmos.elf aerosentinel_atmos.map: $(OBJS) $(USER_OBJS) C:\Users\Yassine\ DEHHANI\Documents\satellite-atmos\STM32L476RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "aerosentinel_atmos.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\Yassine DEHHANI\Documents\satellite-atmos\STM32L476RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="aerosentinel_atmos.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
